@@ -1,0 +1,51 @@
+[build-system]
+ requires = ["hatchling >= 1.26"]
+ build-backend = "hatchling.build"
+
+[project]
+ name = "spade_fipainterop"
+ packages = ["spade_fipainterop"]
+ description = "Interoperability with FIPA-compatible platforms such as JADE"
+ readme = "README.md"
+ requires-python = ">=3.11"
+ dependencies = [
+    "spade>=4.1.2",
+    "lark"
+ ]
+ version="0.1.0"
+
+[project.optional-dependencies]
+  dev = [
+    "black",
+    "ruff"
+  ]
+  test = [
+    "pytest",
+    "pytest-cov",
+    "pytest-asyncio",
+    "testcontainers"
+  ]
+
+[tool.hatch.build.targets.sdist]
+ ignore-vcs = false
+
+[tool.ruff]
+ line-length = 93
+
+[tool.pytest.ini_options]
+ testpaths = ["tests"]
+ addopts = "-ra"
+
+[tool.hatch.build]
+  source-directories = ["src"]
+
+[tool.hatch.build.targets.wheel]
+  packages = ["src/spade_fipainterop"]
+
+[tool.tox]
+  env_list=["py311", "py312"]
+
+[tool.tox.env_run_base]
+  extras = ["test"]
+  commands = [["pytest"]]
+  package = "wheel"
