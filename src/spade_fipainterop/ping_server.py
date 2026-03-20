@@ -407,7 +407,7 @@ async def send_outgoing_message(m: ACLMessage):
                 logger.debug(f"Got reply: {response}")
 
 
-class FipaConnector(web.Application):
+class FipaConnector:
     """Connect to a remote agent platform using the fipa standard to exchange
     messages."""
 
@@ -416,16 +416,18 @@ class FipaConnector(web.Application):
     # In addition of the web thread that is responsible for receiving messages,
     # this worker sends outgoing messages (using a POST request)
     out_worker: asyncio.Task
+    app: web.Application
 
     def __init__(self, url):
         self.url = url
         self._incomming = Queue()
         self._outgoing = Queue()
         super().__init__()
+        self.app = web.Application()
         # TODO use a parameter
-        self.add_routes([web.post("/acc", self.handle_message)])
-        self.on_startup.append(self.start_message_sender)
-        self.on_cleanup.append(self.cleanup_message_sender)
+        self.app.add_routes([web.post("/acc", self.handle_message)])
+        self.app.on_startup.append(self.start_message_sender)
+        self.app.on_cleanup.append(self.cleanup_message_sender)
 
     async def get_message(self) -> ACLMessage:
         """Get the next incomming message"""
@@ -588,8 +590,8 @@ class Pinger:
                 await asyncio.sleep(5)
                 if self.limit and len(self.sent) >= self.limit:
                     print("limit reached, stopping...")
-                    await self.conn.shutdown()
-                    await self.conn.cleanup()
+                    await self.conn.app.shutdown()
+                    await self.conn.app.cleanup()
             except Exception as e:
                 logger.error("Error sending ping:", e)
 
@@ -625,9 +627,9 @@ def create_ping_server(
     send=True,
     limit=None,
 ):
-    app = FipaConnector(remote_url)
+    conn = FipaConnector(remote_url)
     pinger = Pinger(
-        app,
+        conn,
         remote_name=remote_name,
         remote_url=remote_url,
         local_name=local_name,
@@ -635,9 +637,9 @@ def create_ping_server(
         send=send,
         limit=limit,
     )
-    app.on_startup.append(pinger.start)
-    app.on_cleanup.append(pinger.cleanup)
-    return app, pinger
+    conn.app.on_startup.append(pinger.start)
+    conn.app.on_cleanup.append(pinger.cleanup)
+    return conn, pinger
 
 
 if __name__ == "__main__":
@@ -647,8 +649,8 @@ if __name__ == "__main__":
             local_url="http://localhost:7772/acc",
             remote_name="ping1@Platform1",
             remote_url="http://hobart:7778/acc",
-            send=True,
-        )[0],
+            send=True
+        )[0].app,
         host="127.0.0.1",
         port=7772,
     )
