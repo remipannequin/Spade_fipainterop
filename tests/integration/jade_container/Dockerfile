@@ -19,6 +19,8 @@ COPY --from=build /build/*.class .
 EXPOSE 1099 7778
 
 ENV LOCAL_AGENT_NAME=ping1
+ENV LOCAL_PLATFORM=Platform1
+ENV LOCAL_URL=http://localhost:7778/acc
 ENV REMOTE_AGENT_NAME=ping2@Platform2
 ENV REMOTE_URL=http://localhost:7772/acc
 ENV MODE=recv
@@ -28,6 +30,6 @@ CMD java \
     --add-opens java.xml/com.sun.org.apache.xerces.internal.jaxp=ALL-UNNAMED\
     -cp .:./libs/*\
     jade.Boot\
-    -name Platform1\
-    -mtps "jade.mtp.http.MessageTransportProtocol(http://localhost:7778/acc)"\
+    -name ${LOCAL_PLATFORM}}\
+    -mtps "jade.mtp.http.MessageTransportProtocol(${LOCAL_URL}})"\
     "${LOCAL_AGENT_NAME}:PingAgent(${REMOTE_AGENT_NAME},${REMOTE_URL},${MODE}})"
