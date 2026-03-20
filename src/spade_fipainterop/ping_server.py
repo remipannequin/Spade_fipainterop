@@ -5,7 +5,7 @@ import logging
 import xml.etree.ElementTree as ET
 from asyncio import Queue
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from enum import StrEnum
 from typing import Any
 
@@ -14,6 +14,7 @@ from aiohttp import ClientSession, web, TCPConnector
 from lark import Lark, Token, Transformer
 
 logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger("FIPAConnector")
 
 
 FIPA_ACL_REPR = "fipa.acl.rep.string.std"
@@ -100,14 +101,18 @@ class ACLPerformative(StrEnum):
 
 class AID:
     def __init__(self, name: str, addresses: list[str] | None = None):
-        self.name = name
-        self.addresses = addresses or []
+        self.name: str = name
+        self.addresses: list[str] = addresses or []
 
     def __repr__(self):
         return (
             f"(agent-identifier :name {self.name} "
             + f":addresses (sequence {' '.join(self.addresses)} ))"
         )
+
+    def localname(self):
+        if self.name:
+            return self.name.split("@")[0]
 
 
 class ACLMessage:
@@ -265,7 +270,7 @@ def read_agent_identifier(elem: ET.Element[str] | None) -> AID | None:
 def fipa_datetime(dt=None):
     if not dt:
         dt = datetime.now(timezone.utc)
-    return dt.strftime("%Y%m%dT%H%M%S")+f"{dt.microsecond // 1000:03d}"
+    return dt.strftime("%Y%m%dT%H%M%S") + f"{dt.microsecond // 1000:03d}"
 
 
 @dataclass
@@ -323,8 +328,6 @@ def write_envelope(evlp: ACLEnvelope) -> bytes:
     return preamble + ET.tostring(root, encoding="utf-8", method="xml")
 
 
-
-
 def parse_acl_message(text):
     """Parse un message ACL à partir d'une chaîne de texte brute.
     Utilise Lark pour parser le message selon la grammaire FIPA SL définie.
@@ -379,10 +382,10 @@ async def send_outgoing_message(m: ACLMessage):
         body_lines.append(txt_part.encode("iso-8859-1"))
 
         # multipart end
-        body_lines.append(bd+b"--")
+        body_lines.append(bd + b"--")
 
         # final line
-        #body_lines.append(b"2")
+        # body_lines.append(b"2")
         crlf = "\r\n".encode("iso-8859-1")
         body = crlf.join(body_lines)
         url = addresses[0]
@@ -397,52 +400,41 @@ async def send_outgoing_message(m: ACLMessage):
         }
         connector = TCPConnector(force_close=True)
         async with ClientSession(connector=connector) as session:
-            async with session.post(
-                url, data=body, headers=headers
-            ) as resp:
+            logger.debug(f"POST message to {url}")
+            async with session.post(url, data=body, headers=headers) as resp:
                 # check that it is OK
                 response = await resp.read()
-                print(resp, response)
-
-
-def ping_reply(ping: ACLMessage) -> ACLMessage:
-    """Create a ping reply message"""
-    pong = ping.create_reply(ACLPerformative.INFORM)
-    assert ping.content
-    ping_num = ping.content[6:]
-    pong.content = "pong_" + ping_num
-    return pong
-
-
-def create_ping(name: str, addr: str) -> ACLMessage:
-    """Prepare a ping message"""
-    flds = {
-        "sender": AID("ping2@Platform2", ["http://localhost:7772/acc"]),
-        "receiver": {AID(name, [addr])},
-        "protocol": "c2ps-ping",
-        "content": "ping",
-    }
-    return ACLMessage(ACLPerformative.REQUEST, flds)
+                logger.debug(f"Got reply: {response}")
 
 
 class FipaConnector(web.Application):
-    incomming_message_queue: Queue[ACLMessage]
-    outgoing_message_queue: Queue[ACLMessage]
-    in_worker: asyncio.Task
-    out_worker: asyncio.Task
-    test_sender: asyncio.Task
+    """Connect to a remote agent platform using the fipa standard to exchange
+    messages."""
 
-    def __init__(self, url, test = False):
+    _incomming: Queue[ACLMessage]
+    _outgoing: Queue[ACLMessage]
+    # In addition of the web thread that is responsible for receiving messages,
+    # this worker sends outgoing messages (using a POST request)
+    out_worker: asyncio.Task
+
+    def __init__(self, url):
         self.url = url
-        self.incomming_message_queue = Queue()
-        self.outgoing_message_queue = Queue()
+        self._incomming = Queue()
+        self._outgoing = Queue()
         super().__init__()
+        # TODO use a parameter
         self.add_routes([web.post("/acc", self.handle_message)])
-        self.on_startup.append(self.start_message_worker)
-        self.on_cleanup.append(self.cleanup_message_worker)
-        if test:
-            self.on_startup.append(self.start_test_sender)
-            self.on_cleanup.append(self.cleanup_test_sender)
+        self.on_startup.append(self.start_message_sender)
+        self.on_cleanup.append(self.cleanup_message_sender)
+
+    async def get_message(self) -> ACLMessage:
+        """Get the next incomming message"""
+        msg = await self._incomming.get()
+        self._incomming.task_done()
+        return msg
+
+    async def post_message(self, msg: ACLMessage):
+        self._outgoing.put_nowait(msg)
 
     async def handle_message(self, request):
         # Vérifie que c'est un POST
@@ -483,73 +475,180 @@ class FipaConnector(web.Application):
             transformer = FIPA_SL_Transformer()
             acl_msg_obj = transformer.transform(tree)
             p.message = acl_msg_obj
-            self.incomming_message_queue.put_nowait(acl_msg_obj)
+            self._incomming.put_nowait(acl_msg_obj)
         # Retourner OK au client
-        return web.Response(status=200, text="<html><body><h1>200 OK</h1></body></html>\r\n")
+        return web.Response(
+            status=200, text="<html><body><h1>200 OK</h1></body></html>\r\n"
+        )
 
-    async def start_message_worker(self, _):
+    async def start_message_sender(self, _):
         """Start the message-processing task"""
-        self.in_worker = asyncio.create_task(self.process_incoming_messages())
         self.out_worker = asyncio.create_task(self.process_outgoing_messages())
 
-    async def start_test_sender(self, app):
-        self.test_sender = asyncio.create_task(self.send_ping())
-
-    async def cleanup_message_worker(self, _):
+    async def cleanup_message_sender(self, _):
         """Stop the message-processing task"""
-        self.in_worker.cancel()
         self.out_worker.cancel()
-        await asyncio.gather(self.in_worker, self.out_worker, return_exceptions=True)
+        await self.out_worker
+
+    async def process_outgoing_messages(self):
+        while True:
+            msg = await self._outgoing.get()
+            logger.info("sending outgoing message")
+            try:
+                await send_outgoing_message(msg)
+            except Exception as e:
+                logger.error("Error processing outgoing message:", e)
+            finally:
+                self._outgoing.task_done()
 
 
-    async def cleanup_test_sender(self, _):
-        self.test_sender.cancel()
-        await self.test_sender
+class Pinger:
+    """A client of the connector that send and reply to pings to/from jade"""
 
-    async def process_incoming_messages(self):
+    reply_task: asyncio.Task
+    sender_task: asyncio.Task
+    sent: dict[str, datetime]
+    delays: list[timedelta]
+
+    def __init__(
+        self,
+        connector: FipaConnector,
+        local_url: str,
+        local_name: str,
+        remote_url: str,
+        remote_name: str,
+        send: bool = True,
+        limit: int | None = None,
+    ):
+        """Create a Pinger that connects to the incomming / outgoing queues
+        in the connector."""
+        self.conn = connector
+        self.local_aid = AID(local_name, [local_url])
+        self.remote_aid = AID(remote_name, [remote_url])
+        self.send = send
+        self.sent = {}
+        self.delays = []
+        self.limit = limit
+
+    async def start(self, _):
+        # install tasks in the connector
+        self.reply_task = asyncio.create_task(self.do_reply_task())
+        if self.send:
+            self.sender_task = asyncio.create_task(self.do_sender_task())
+            # self.on_cleanup.append(self.cleanup_test_sender)
+
+    async def cleanup(self, _):
+        """Cleanup reply (and sender) tasks"""
+        self.reply_task.cancel()
+        if not self.sender_task:
+            await self.reply_task
+        else:
+            self.sender_task.cancel()
+            await asyncio.gather(self.sender_task, self.reply_task)
+
+    async def do_reply_task(self):
+        """The task of getting incomming message and sending reply"""
         while True:
             try:
-                message = await self.incomming_message_queue.get()
-                print(f"Received {message.content} from {message.sender}")
+                message = await self.conn.get_message()
+                logger.info(f"Received {message.content} from {message.sender}")
                 # TODO route message to actual agent !
                 if (
                     message.performative == ACLPerformative.REQUEST
                     and message.protocol == "c2ps-ping"
                 ):
-                    reply = ping_reply(message)
-                    print(f"replying {reply.content}")
-                    await self.outgoing_message_queue.put(reply)
-            except Exception as e:
-                print("Error processing incoming message:", e)
-            finally:
-                self.incomming_message_queue.task_done()
+                    reply = self.reply(message)
+                    logger.info(f"replying {reply.content}")
+                    await self.conn._outgoing.put(reply)
+                else:
+                    # check if this is a reply
+                    if message.conversation_id in self.sent:
+                        t = self.sent[message.conversation_id]
+                        delay = datetime.now() - t
+                        # TODO use enveloppe date instead
+                        print(f"Got a reply after {delay}")
+                        self.delays.append(delay)
+                    else:
+                        print(message)
 
-    async def process_outgoing_messages(self):
+            except Exception as e:
+                logger.error("Error processing incoming message:", e)
+            #finally:
+            #    self.conn._incomming.task_done()
+
+    async def do_sender_task(self):
+        """Send a ping message every 5 seconds"""
         while True:
             try:
-                msg = await self.outgoing_message_queue.get()
-                print("sending outgoing message")
-                await send_outgoing_message(msg)
-            except Exception as e:
-                print("Error processing outgoing message:", e)
-            finally:
-                self.outgoing_message_queue.task_done()
-
-    async def send_ping(self):
-        while True:
-            try:
-                msg = create_ping("ping1@Platform1", self.url)
-                self.outgoing_message_queue.put_nowait(msg)
-                print("Creating a ping message")
+                msg = self.create_ping()
+                await self.conn.post_message(msg)
+                assert msg.conversation_id, "conversation id not set"
+                self.sent[msg.conversation_id] = datetime.now()
+                logger.info("Creating a ping message")
                 await asyncio.sleep(5)
+                if self.limit and len(self.sent) >= self.limit:
+                    print("limit reached, stopping...")
+                    await self.conn.shutdown()
+                    await self.conn.cleanup()
             except Exception as e:
-                print("Error sending ping:", e)
+                logger.error("Error sending ping:", e)
+
+    def reply(self, ping: ACLMessage) -> ACLMessage:
+        """Create a ping reply message"""
+        # no need to know local or remote name here,
+        # they are already in the message
+        pong = ping.create_reply(ACLPerformative.INFORM)
+        assert ping.content
+        ping_num = ping.content[6:]
+        pong.content = "pong_" + ping_num
+        return pong
+
+    def create_ping(self) -> ACLMessage:
+        """Prepare a ping message, from local to remote"""
+        n = len(self.sent)
+        conv_id = f"ping-{self.local_aid.localname()}-{n}"
+        flds = {
+            "sender": self.local_aid,
+            "receiver": {self.remote_aid},
+            "protocol": "c2ps-ping",
+            "content": f"ping_{n}",
+            "conversation-id": conv_id,
+        }
+        return ACLMessage(ACLPerformative.REQUEST, flds)
 
 
-def create_ping_server(url:str, test=False):
-    app = FipaConnector(url, test=test)
-    return app
+def create_ping_server(
+    remote_name: str,
+    remote_url: str,
+    local_name: str,
+    local_url: str,
+    send=True,
+    limit=None,
+):
+    app = FipaConnector(remote_url)
+    pinger = Pinger(
+        app,
+        remote_name=remote_name,
+        remote_url=remote_url,
+        local_name=local_name,
+        local_url=local_url,
+        send=send,
+        limit=limit,
+    )
+    app.on_startup.append(pinger.start)
+    app.on_cleanup.append(pinger.cleanup)
+    return app, pinger
 
 
 if __name__ == "__main__":
-    web.run_app(create_ping_server("http://hobart:7771/acc", test=True), host="127.0.0.1", port=7772)
+    web.run_app(
+        create_ping_server(
+            local_name="ping2@Platform2",
+            local_url="http://localhost:7772/acc",
+            remote_name="ping1@Platform1",
+            remote_url="http://hobart:7778/acc",
+            send=True,
+        )[0],
+        host="127.0.0.1",
+        port=7772,
+    )
