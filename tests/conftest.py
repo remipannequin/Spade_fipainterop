@@ -2,14 +2,21 @@ import pytest
 
 from testcontainers.core.container import DockerContainer
 
+from spade_fipainterop.network import FipaConnector
+from helpers import Pinger
+
 
 def pytest_addoption(parser):
+    # addresses and names
     parser.addoption("--jade-platform", action="store", default="Platform1")
     parser.addoption("--jade-mtp", action="store", default="http://localhost:7778/acc")
     parser.addoption("--jade-pinger-name", action="store", default="ping1")
     parser.addoption("--platform", action="store", default="Platform2")
     parser.addoption("--mtp", action="store", default="http://localhost:7772/acc")
     parser.addoption("--pinger-name", action="store", default="ping2")
+    # ping perdiod, and limit
+    parser.addoption("--ping-period", action="store", default="1")
+    parser.addoption("--ping-number", action="store", default="5")
 
 
 @pytest.fixture(scope="session")
@@ -26,6 +33,15 @@ def addresses(pytestconfig):
             "pinger-name": pytestconfig.getoption("--pinger-name"),
         },
     }
+
+
+@pytest.fixture(scope="session")
+def ping_conf(pytestconfig):
+    """Get the ping period and limit"""
+    return (
+        float(pytestconfig.getoption("--ping-period")),
+        int(pytestconfig.getoption("--ping-number")),
+    )
 
 
 @pytest.fixture(scope="session")
@@ -55,3 +71,24 @@ def jade_main(addresses):
     )
 
     container.stop()
+
+
+@pytest.fixture(scope="function")
+def ping_server(addresses, ping_conf):
+    jade = addresses["jade"]
+    addr = addresses["local"]
+    period, limit = ping_conf
+    conn = FipaConnector(jade["mtp"])
+    pinger = Pinger(
+        conn,
+        remote_name=jade["pinger-name"] + "@" + jade["platform"],
+        remote_url=jade["mtp"],
+        local_name=addr["pinger-name"],
+        local_url=addr["mtp"],
+        send=True,
+        period=period,
+        limit=limit,
+    )
+    conn.app.on_startup.append(pinger.start)
+    conn.app.on_cleanup.append(pinger.cleanup)
+    yield conn, pinger

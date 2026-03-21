@@ -1,29 +1,27 @@
-from spade_fipainterop.ping_server import create_ping_server, FipaConnector
+
 from urllib.parse import urlparse
 from aiohttp import web
 import asyncio
 
 
-async def start_connector(app: web.Application, host, port):
+async def start_connector(app: web.Application, host, port, timeout):
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, host, port)
     await site.start()
-    await asyncio.sleep(30)
+    await asyncio.sleep(timeout)
 
-def test_ping(jade_main, addresses):
+def test_ping(jade_main, addresses, ping_server, ping_conf):
     jade_ag, jade_mtp = jade_main
+    period, limit = ping_conf
+    max_t = (period*1.2) * (limit+2)
     addr = addresses["local"]
     mtp = urlparse(addr["mtp"])
-    conn, pinger = create_ping_server(
-        local_name=f"{addr['pinger-name']}@{addr['platform']}",
-        local_url=addr["mtp"],
-        remote_name=jade_ag,
-        remote_url=jade_mtp,
-        send=True,
-        limit=5,
-    )
-    asyncio.run(start_connector(conn.app, mtp.hostname, mtp.port))
-    
-    assert len(pinger.sent) == 5
-    assert len(pinger.delays) == 5
+    conn, pinger = ping_server
+    print(f"running ping test for {max_t} seconds...")
+    asyncio.run(start_connector(conn.app, mtp.hostname, mtp.port, timeout=max_t))
+    # check all ping sent were replied
+    assert len(pinger.sent) == limit
+    assert len(pinger.delays) == limit
+    # check a reasonable 100ms max delay
+    assert all([d.microseconds < 100000 for d in pinger.delays])
