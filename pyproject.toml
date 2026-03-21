@@ -7,7 +7,7 @@
  packages = ["spade_fipainterop"]
  description = "Interoperability with FIPA-compatible platforms such as JADE"
  readme = "README.md"
- requires-python = ">=3.11"
+ requires-python = ">=3.12"
  dependencies = [
     "spade>=4.1.2",
     "lark"
@@ -43,7 +43,7 @@
   packages = ["src/spade_fipainterop"]
 
 [tool.tox]
-  env_list=["py311", "py312"]
+  env_list=["py312"]
 
 [tool.tox.env_run_base]
   extras = ["test"]

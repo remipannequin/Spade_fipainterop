@@ -1,6 +1,5 @@
 import asyncio
 import logging
-import pytest
 from datetime import datetime, timedelta
 from spade_fipainterop.network import FipaConnector
 from spade_fipainterop.fipa import AID, ACLMessage, ACLPerformative

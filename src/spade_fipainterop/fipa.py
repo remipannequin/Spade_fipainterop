@@ -194,6 +194,7 @@ class FIPA_SL_Transformer(Transformer):
                 name = v
             elif k == "addresses":
                 addresses = v
+        assert name, "name cannot be empty"
         return AID(name, addresses)
 
     # Constantes
