@@ -1,7 +1,7 @@
 FROM maven:3.9-eclipse-temurin-21 AS build
 
 WORKDIR /build
-COPY PingAgent.java .
+COPY src/PingAgent.java .
 COPY pom.xml .
 
 #RUN mvn dependency:get -Dartifact=com.gitlab.jade-project:jade:master-SNAPSHOT

@@ -9,6 +9,10 @@ import jade.core.behaviours.WakerBehaviour;
 import jade.lang.acl.ACLMessage;
 import jade.lang.acl.MessageTemplate;
 import java.util.Date;
+import jade.domain.DFService;
+import jade.domain.FIPAException;
+import jade.domain.FIPAAgentManagement.DFAgentDescription;
+import jade.domain.FIPAAgentManagement.ServiceDescription;
 
 /**
  * An agent that periodically sends "ping" messages to a peer and waits for 
@@ -128,7 +132,22 @@ public class PingAgent extends jade.core.Agent {
                 recv = false;
             } 
         }
+        // Register a service in the DF (to test querying the DF from outside)
+        DFAgentDescription dfd = new DFAgentDescription();
+        dfd.setName(getAID());
+        // Create service description
+        ServiceDescription sd = new ServiceDescription();
+        sd.setType("Test-Service");
+        sd.setName("Ping");
+        // Add service to agent description
+        dfd.addServices(sd);
 
+        try {
+            // Register to DF
+            DFService.register(this, dfd);
+        } catch (FIPAException e) {
+            e.printStackTrace();
+        }
 
         // Periodically send ping messages to the peer
         if (send) {
