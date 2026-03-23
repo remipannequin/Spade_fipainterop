@@ -30,6 +30,6 @@ CMD java \
     --add-opens java.xml/com.sun.org.apache.xerces.internal.jaxp=ALL-UNNAMED\
     -cp .:./libs/*\
     jade.Boot\
-    -name ${LOCAL_PLATFORM}}\
-    -mtps "jade.mtp.http.MessageTransportProtocol(${LOCAL_URL}})"\
-    "${LOCAL_AGENT_NAME}:PingAgent(${REMOTE_AGENT_NAME},${REMOTE_URL},${MODE}})"
+    -name ${LOCAL_PLATFORM}\
+    -mtps "jade.mtp.http.MessageTransportProtocol(${LOCAL_URL})"\
+    "${LOCAL_AGENT_NAME}:PingAgent(${REMOTE_AGENT_NAME},${REMOTE_URL},${MODE})"
