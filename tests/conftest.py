@@ -1,9 +1,11 @@
 import pytest
 
+import time
+
 from testcontainers.core.container import DockerContainer
 
 from spade_fipainterop.network import FipaConnector
-from helpers import Pinger
+from helpers import Pinger, DFSearcher
 
 
 def pytest_addoption(parser):
@@ -43,7 +45,6 @@ def ping_conf(pytestconfig):
         int(pytestconfig.getoption("--ping-number")),
     )
 
-
 @pytest.fixture(scope="session")
 def jade_main(addresses):
     """Start jade container with one pinger agent. return the name of ping agent,
@@ -53,7 +54,7 @@ def jade_main(addresses):
     local_addr = addresses["local"]
     container = (
         DockerContainer("jade:latest")
-        # .with_exposed_ports(7778, 1099)
+        #.with_exposed_ports(7778, 1099)
         .with_kwargs(network_mode="host")
         .with_env("LOCAL_AGENT_NAME", jade_addr["pinger-name"])
         .with_env("LOCAL_PLATFORM", jade_addr["platform"])
@@ -62,14 +63,16 @@ def jade_main(addresses):
             "REMOTE_AGENT_NAME", f"{local_addr['pinger-name']}@{local_addr['platform']}"
         )
         .with_env("REMOTE_URL", local_addr["mtp"])
+        #.waiting_for(HttpWaitStrategy.from_url(jade_addr['mtp']))
     )
     container.start()
-
+    time.sleep(2)
+    #port = container.get_exposed_port(7778)
     yield (
         f"{jade_addr['pinger-name']}@{jade_addr['platform']}",
-        jade_addr["mtp"],
+        jade_addr["mtp"] #.replace("7778", str(port))
     )
-
+    print(container.get_logs()[1].decode())
     container.stop()
 
 
@@ -92,3 +95,21 @@ def ping_server(addresses, ping_conf):
     conn.app.on_startup.append(pinger.start)
     conn.app.on_cleanup.append(pinger.cleanup)
     yield conn, pinger
+
+
+@pytest.fixture(scope="function")
+def df_search(addresses):
+    jade = addresses["jade"]
+    addr = addresses["local"]
+    conn = FipaConnector(jade["mtp"])
+    searcher = DFSearcher(
+        conn,
+        addr["mtp"],
+        addr["pinger-name"],
+        addr["platform"],
+        jade["mtp"],
+        jade["platform"],
+    )
+    conn.app.on_startup.append(searcher.start)
+    conn.app.on_cleanup.append(searcher.cleanup)
+    yield conn, searcher

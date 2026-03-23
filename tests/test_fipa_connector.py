@@ -25,3 +25,13 @@ def test_ping(jade_main, addresses, ping_server, ping_conf):
     assert len(pinger.delays) == limit
     # check a reasonable 100ms max delay
     assert all([d.microseconds < 100000 for d in pinger.delays])
+
+def test_df_search(jade_main, addresses, df_search):
+    jade_ag, jade_mtp = jade_main
+    addr = addresses["local"]
+    mtp = urlparse(addr["mtp"])
+    conn, searcher = df_search
+    print("running df search for 5 seconds...")
+    asyncio.run(start_connector(conn.app, mtp.hostname, mtp.port, timeout=5))
+    assert searcher.result
+    
