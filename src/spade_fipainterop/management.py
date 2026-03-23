@@ -179,6 +179,9 @@ class Result:
 
 class FIPA_SL_Transformer(Transformer):
 
+    def __init__(self, onto: "Ontology | None" = None):
+        self.onto = onto
+
     def content(self, items):
         return items[0]
 
@@ -188,12 +191,21 @@ class FIPA_SL_Transformer(Transformer):
     def action_term(self, items):
         args = []
         kwargs = {}
+        verb = items[0]
         for e in items[1:]:
             if isinstance(e, list) and len(e) == 2:
                 kwargs[e[0]] = e[1]
             else:
                 args.append(e)
-        return AgentAction(items[0], *args, **kwargs)
+        #if verb is in the ontology
+        if self.onto and verb in self.onto.classes:
+            C = self.onto.classes[verb]
+            inst = C()
+            inst.terms = args
+            inst.kw_terms = kwargs
+            return inst
+        else:
+            return AgentAction(verb, *args, **kwargs)
 
     def result_expr(self, items):
         return Result(items[0], items[1])
@@ -204,12 +216,21 @@ class FIPA_SL_Transformer(Transformer):
     def functor_expr(self, items):
         args = []
         kwargs = {}
+        functor = items[0]
         for e in items[1:]:
             if len(e) == 1:
                 args.append(e)
             elif len(e) == 2:
                 kwargs[e[0]] = e[1]
-        return Concept(items[0], *args, **kwargs)
+        #if verb is in the ontology
+        if self.onto and functor in self.onto.classes:
+            C = self.onto.classes[functor]
+            inst = C()
+            inst.terms = args
+            inst.kw_terms = kwargs
+            return inst
+        else:
+            return Concept(functor, *args, **kwargs)
 
     def keyword_term(self, items):
         key = str(items[0])[1:]  # remove starting ":"
@@ -362,10 +383,11 @@ class DFSearch(AgentAction):
 
     def __init__(
         self,
-        description: DFAgentDescription,
+        description: DFAgentDescription | None = None,
         constraint: DFSearchConstraint | None = None,
     ):
-        self.description = description
+        if description:
+            self.description = description
         if not constraint:
             self.constraint = DFSearchConstraint()
         else:
@@ -390,4 +412,36 @@ class DFSearch(AgentAction):
             self.terms.extend([None] * n)
         self.terms.insert(1, value)
 
+class Ontology:
+    name: str
+    classes: dict[str, Type[Functor]]
 
+    def __init__(self):
+        self.classes = {}
+
+    def add(self, *classes: Type[Functor]):
+        for c in classes:
+            self.classes[c._functor_name] = c
+
+
+class FipaManagementOntology(Ontology):
+
+    name = "FIPA-Agent-Management"
+
+    def __init__(self):
+        super().__init__()
+        self.add(DFSearch, DFAgentDescription, DFSearchConstraint, DFService)
+
+
+def get_abstract_content(content_txt: str):
+    tree = sl0_parser.parse(content_txt)
+    transformer = FIPA_SL_Transformer()
+    content = transformer.transform(tree)
+    return content
+
+
+def get_content(content_txt: str, onto: Ontology):
+    tree = sl0_parser.parse(content_txt)
+    transformer = FIPA_SL_Transformer(onto)
+    content = transformer.transform(tree)
+    return content
