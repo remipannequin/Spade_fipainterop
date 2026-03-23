@@ -4,7 +4,7 @@ import logging
 from datetime import datetime, timedelta
 from spade_fipainterop.network import FipaConnector
 from spade_fipainterop.fipa import AID, ACLMessage, ACLPerformative
-from spade_fipainterop.management import DFAgentDescription, DFSearch, Action
+from spade_fipainterop.management import FipaManagementOntology, DFAgentDescription, DFSearch, Action, get_content
 
 logger = logging.getLogger("FIPAConnector")
 
@@ -178,9 +178,9 @@ class DFSearcher:
             if reply.performative == ACLPerformative.INFORM and ct :
                 self.result = self.decode_search_reply(ct)
             else:
-                print(reply)
+                print(f"Unexpected reply {reply}")
         except Exception as e:
-            logger.error("Error sending ping:", e)
+            logger.error("Error during DF search:", e)
 
     def create_search_msg(self) -> ACLMessage:
         """
@@ -220,11 +220,10 @@ class DFSearcher:
                 "protocol": "fipa-request",
                 "ontology": "FIPA-Agent-Management",
                 "language": "fipa-sl0",
-                "content": str(content),
                 "conversation-id": "test12345",
             },
         )
-
+        msg.content = str(content)
         return msg
 
     def decode_search_reply(self, content: str):
@@ -245,4 +244,4 @@ class DFSearcher:
             (search-constraints
             :max-results -1))) (sequence)))
         """
-        return content
+        return get_content(content_txt=content, onto=FipaManagementOntology())

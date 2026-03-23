@@ -2,6 +2,8 @@
 from urllib.parse import urlparse
 from aiohttp import web
 import asyncio
+from spade_fipainterop.fipa import AID
+from spade_fipainterop.management import Result, DFAgentDescription
 
 
 async def start_connector(app: web.Application, host, port, timeout):
@@ -34,4 +36,10 @@ def test_df_search(jade_main, addresses, df_search):
     print("running df search for 5 seconds...")
     asyncio.run(start_connector(conn.app, mtp.hostname, mtp.port, timeout=5))
     assert searcher.result
+    assert isinstance(searcher.result, Result)
+    found: set[AID] = set()
+    for r in searcher.result.result:
+        assert isinstance(r, DFAgentDescription)
+        found.add(r.name)
+    assert len(found) == 1
     
