@@ -125,10 +125,22 @@ class ACLMessage:
 
     @property
     def content(self) -> str | None:
-        return self.fields.get("content", None)
+        """Get the value of the content, unquoting it if required"""
+        s = self.fields.get("content", None)
+        if not s:
+            return s
+        # unquote if required
+        while len(s) >= 2 and s[0] == '"' and s[-1] == '"':
+            s = s[1:-1]
+        return s
 
     @content.setter
     def content(self, value: str):
+        """Set the value of the content, quoting it if required."""
+        # quote if required
+        if any(c.isspace() for c in value):
+            value = '"'+value+'"'
+        #TODO escape " in the value
         self.fields["content"] = value
 
     @property
@@ -148,8 +160,6 @@ class ACLMessage:
                 v_str = "(sequence " + " ".join(str(a) for a in v) + ")"
             else:
                 v_str = str(v)
-                if k == "content":
-                    v_str = '"' + v_str + '"'
             fields.append(f":{k} {v_str}")
         return f"({self.performative}\n{'\n'.join(fields)} )"
 
