@@ -1,15 +1,12 @@
 import pytest
 from helpers import assert_equal_ignore_whitespace
+from spade_fipainterop.content import get_content, get_abstract_content, Action, Result
 from spade_fipainterop.management import (
-    Action,
     AID,
     AgentAction,
-    Result,
     DFSearch,
     DFAgentDescription,
-    FipaManagementOntology,
-    get_abstract_content,
-    get_content
+    FipaManagementOntology
 )
 
 

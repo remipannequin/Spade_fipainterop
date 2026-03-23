@@ -3,7 +3,8 @@ from urllib.parse import urlparse
 from aiohttp import web
 import asyncio
 from spade_fipainterop.fipa import AID
-from spade_fipainterop.management import Result, DFAgentDescription
+from spade_fipainterop.content import Result
+from spade_fipainterop.management import DFAgentDescription
 
 
 async def start_connector(app: web.Application, host, port, timeout):
@@ -42,4 +43,3 @@ def test_df_search(jade_main, addresses, df_search):
         assert isinstance(r, DFAgentDescription)
         found.add(r.name)
     assert len(found) == 1
-    

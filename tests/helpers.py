@@ -4,7 +4,8 @@ import logging
 from datetime import datetime, timedelta
 from spade_fipainterop.network import FipaConnector
 from spade_fipainterop.fipa import AID, ACLMessage, ACLPerformative
-from spade_fipainterop.management import FipaManagementOntology, DFAgentDescription, DFSearch, Action, get_content
+from spade_fipainterop.content import Action, get_content
+from spade_fipainterop.management import FipaManagementOntology, DFAgentDescription, DFSearch
 
 logger = logging.getLogger("FIPAConnector")
 
