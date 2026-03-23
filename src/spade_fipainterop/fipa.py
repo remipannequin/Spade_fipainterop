@@ -7,8 +7,6 @@ from typing import Any
 import xml.etree.ElementTree as ET
 from lark import Lark, Token, Transformer
 
-
-
 FIPA_ACL_REPR = "fipa.acl.rep.string.std"
 
 acl_grammar = r"""
@@ -99,7 +97,7 @@ class AID:
     def __repr__(self):
         return (
             f"(agent-identifier :name {self.name} "
-            + f":addresses (sequence {' '.join(self.addresses)} ))"
+            + f":addresses (sequence {' '.join(self.addresses)}))"
         )
 
     def localname(self):
