@@ -14,6 +14,7 @@ import jade.domain.FIPAException;
 import jade.domain.FIPAAgentManagement.DFAgentDescription;
 import jade.domain.FIPAAgentManagement.ServiceDescription;
 
+
 /**
  * An agent that periodically sends "ping" messages to a peer and waits for 
  * "pong" responses.
@@ -102,6 +103,29 @@ public class PingAgent extends jade.core.Agent {
     }
 
 
+    private final class DFSearch extends WakerBehaviour {
+        
+        public DFSearch(Agent a, long timeout) {
+            super(a, timeout);
+        }
+        
+        protected void onWake() {
+            // Create template for search
+            DFAgentDescription template = new DFAgentDescription();
+            ServiceDescription sd = new ServiceDescription();
+            sd.setType("Test-Service");
+            sd.setName("Ping");
+            template.addServices(sd);
+
+            try {
+                // Perform DF search
+                DFAgentDescription[] results = DFService.search(myAgent, template);
+            } catch (FIPAException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
     private int num = 0;
     private AID peer;
 
@@ -148,6 +172,9 @@ public class PingAgent extends jade.core.Agent {
         } catch (FIPAException e) {
             e.printStackTrace();
         }
+
+        //search DF after 20s
+        addBehaviour(new DFSearch(this, 20000));
 
         // Periodically send ping messages to the peer
         if (send) {
