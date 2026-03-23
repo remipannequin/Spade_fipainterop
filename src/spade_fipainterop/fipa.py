@@ -1,4 +1,3 @@
-
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import StrEnum
@@ -149,6 +148,8 @@ class ACLMessage:
                 v_str = "(sequence " + " ".join(str(a) for a in v) + ")"
             else:
                 v_str = str(v)
+                if k == "content":
+                    v_str = '"' + v_str + '"'
             fields.append(f":{k} {v_str}")
         return f"({self.performative}\n{'\n'.join(fields)} )"
 
@@ -344,6 +345,3 @@ def prepare_outgoing_message(
         payload_length=len(txt_message),
     )
     return (write_envelope(evlp), txt_message)
-
-
-
