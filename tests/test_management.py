@@ -1,14 +1,15 @@
 import pytest
 from helpers import assert_equal_ignore_whitespace
 from spade_fipainterop.management import (
-    sl0_parser,
-    FIPA_SL_Transformer,
     Action,
     AID,
     AgentAction,
     Result,
     DFSearch,
-    DFAgentDescription
+    DFAgentDescription,
+    FipaManagementOntology,
+    get_abstract_content,
+    get_content
 )
 
 
@@ -62,11 +63,8 @@ def search_response_content():
     """
 
 
-def test_df_search_query(search_request_content):
-    tree = sl0_parser.parse(search_request_content)
-    print(tree.pretty())
-    transformer = FIPA_SL_Transformer()
-    content = transformer.transform(tree)
+def test_df_search_request(search_request_content):
+    content = get_abstract_content(search_request_content)
     assert content
     assert isinstance(content, Action)
     assert content.actor
@@ -77,16 +75,13 @@ def test_df_search_query(search_request_content):
     assert act.functor == "search"
     assert act[0], act[1]
     print(act)
-    assert act[0].predicate == "df-agent-description"
-    assert act[1].predicate == "search-constraints"
+    assert act[0].functor == "df-agent-description"
+    assert act[1].functor == "search-constraints"
     assert isinstance(act[0]["services"], set)
 
 
 def test_df_search_response(search_response_content):
-    tree = sl0_parser.parse(search_response_content)
-    print(tree.pretty())
-    transformer = FIPA_SL_Transformer()
-    content = transformer.transform(tree)
+    content = get_abstract_content(search_response_content)
     assert content
     assert isinstance(content, Result)
     res = content.result
@@ -95,7 +90,7 @@ def test_df_search_response(search_response_content):
     assert isinstance(res[0]["name"], AID)
 
 
-def test_Df_search_msg(search_request_content):
+def test_write_dfsearch(search_request_content):
     dfad = DFAgentDescription()
     dfad.add_service(type="Test-Service", name="Ping")
     act = DFSearch(description=dfad)
@@ -109,4 +104,22 @@ def test_Df_search_msg(search_request_content):
     print(content)
     assert_equal_ignore_whitespace(str(content), search_request_content)
 
+def test_management_onto():
+    onto = FipaManagementOntology()
+    assert onto
+    assert onto.name == "FIPA-Agent-Management"
+    assert DFSearch in onto.classes.values()
+    assert DFSearch._functor_name in onto.classes
+    assert DFAgentDescription in onto.classes.values()
+    assert DFAgentDescription._functor_name in onto.classes
 
+
+def test_read_dfsearch(search_response_content):
+    """Test substitution of abstract classes with instances of the
+    ontology."""
+    content = get_content(search_response_content, FipaManagementOntology())
+    assert isinstance(content, Result)
+    assert isinstance(content.action.action, DFSearch)
+    assert isinstance(content.result, list)
+    r = content.result[0]
+    assert isinstance(r, DFAgentDescription)
