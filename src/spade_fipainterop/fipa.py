@@ -115,6 +115,10 @@ class ACLMessage:
         if not v:
             raise ValueError("Sender field is missing in ACLMessage")
         return v
+    
+    @sender.setter
+    def sender(self, value: AID):
+        self.fields["sender"] = value
 
     @property
     def receiver(self) -> set[AID]:
@@ -122,6 +126,13 @@ class ACLMessage:
         if not v:
             raise ValueError("Receiver field is missing in ACLMessage")
         return v
+
+    def add_receiver(self, aid: AID):
+        if not self.fields.get("receiver"):
+            self.fields["receiver"] = []  # or is it a set ?
+        receiver_list = self.fields.get("receiver")
+        assert receiver_list
+        receiver_list.append(aid)
 
     @property
     def content(self) -> str | None:
@@ -146,6 +157,10 @@ class ACLMessage:
     @property
     def conversation_id(self) -> str | None:
         return self.fields.get("conversation-id", None)
+
+    @conversation_id.setter
+    def conversation_id(self, value:str):
+        self.fields["conversation-id"] = value
 
     @property
     def protocol(self) -> str | None:
