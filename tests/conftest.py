@@ -81,7 +81,7 @@ def ping_server(addresses, ping_conf):
     jade = addresses["jade"]
     addr = addresses["local"]
     period, limit = ping_conf
-    conn = FipaConnector(jade["mtp"])
+    conn = FipaConnector(remote_url=jade["mtp"], local_url=addr['mtp'])
     pinger = Pinger(
         conn,
         remote_name=jade["pinger-name"] + "@" + jade["platform"],
@@ -101,7 +101,7 @@ def ping_server(addresses, ping_conf):
 def df_search(addresses):
     jade = addresses["jade"]
     addr = addresses["local"]
-    conn = FipaConnector(jade["mtp"])
+    conn = FipaConnector(remote_url=jade["mtp"], local_url=addr["mtp"])
     searcher = DFSearcher(
         conn,
         addr["mtp"],

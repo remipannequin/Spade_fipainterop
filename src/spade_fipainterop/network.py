@@ -25,8 +25,10 @@ class FipaConnector:
     out_worker: asyncio.Task
     app: web.Application
 
-    def __init__(self, url):
-        self.url = url
+    def __init__(self, remote_url, local_url):
+        """Create a FipaMtpConnector"""
+        self.remote_url = remote_url
+        self.local_url = local_url
         self._incomming = Queue()
         self._outgoing = Queue()
         super().__init__()
