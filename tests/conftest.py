@@ -1,8 +1,10 @@
 import pytest
-
 import time
 
+from pyjabber.server import Server
+from pyjabber.server_parameters import Parameters
 from testcontainers.core.container import DockerContainer
+import spade
 
 from spade_fipainterop.network import FipaConnector
 from helpers import Pinger, DFSearcher
@@ -10,15 +12,18 @@ from helpers import Pinger, DFSearcher
 
 def pytest_addoption(parser):
     # addresses and names
-    parser.addoption("--jade-platform", action="store", default="Platform1")
+    parser.addoption("--jade-platform", action="store", default="jade")
     parser.addoption("--jade-mtp", action="store", default="http://localhost:7778/acc")
     parser.addoption("--jade-pinger-name", action="store", default="ping1")
-    parser.addoption("--platform", action="store", default="Platform2")
+    parser.addoption("--platform", action="store", default="localhost")
     parser.addoption("--mtp", action="store", default="http://localhost:7772/acc")
     parser.addoption("--pinger-name", action="store", default="ping2")
     # ping perdiod, and limit
     parser.addoption("--ping-period", action="store", default="1")
     parser.addoption("--ping-number", action="store", default="5")
+    # pyjabber config
+    parser.addoption("--xmpp-client-port", action="store", default="5222")
+    parser.addoption("--xmpp-server-port", action="store", default="5437")
 
 
 @pytest.fixture(scope="session")
@@ -34,6 +39,11 @@ def addresses(pytestconfig):
             "mtp": pytestconfig.getoption("--mtp"),
             "pinger-name": pytestconfig.getoption("--pinger-name"),
         },
+        "xmpp": {
+            "client-port": pytestconfig.getoption("--xmpp-client-port"),
+            "server-port": pytestconfig.getoption("--xmpp-server-port"),
+            "host": pytestconfig.getoption("--platform")
+        }
     }
 
 
@@ -113,3 +123,38 @@ def df_search(addresses):
     conn.app.on_startup.append(searcher.start)
     conn.app.on_cleanup.append(searcher.cleanup)
     yield conn, searcher
+
+
+@pytest.fixture(scope="session")
+def pyjabber(addresses):
+    """fixture that start a pyjabber server in a spade container"""
+    addr = addresses("xmpp")
+    server = Server(
+            Parameters(
+                host=addr['host'],
+                client_port=addr['client_port'],
+                server_port=addr['server_port'],
+                connection_timeout=600,
+                database_path="server.db",
+                database_purge=True,
+                database_in_memory=True,
+                
+            )
+        )
+
+    container = spade.container.Container()
+    loop = container.loop
+    # run that one in a subprocess ? 
+    loop.run_until_complete(server.start())
+
+
+@pytest.fixture(scope="session")
+def spade_broker():
+    print("Starting spade XMPP server")
+    proc = subprocess.Popen(["spade", "run", "--host", "127.0.0.1", "--memory"])
+    time.sleep(2)
+    yield "localhost", 5222
+    print("closing Spade XMPP server")
+    proc.send_signal(signal.SIGINT)
+    proc.wait()
+    print("Spade XMPP server closed")
